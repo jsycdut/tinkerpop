@@ -130,33 +130,55 @@ public final class TinkerGraphComputer implements GraphComputer {
 
     @Override
     public Future<ComputerResult> submit() {
-        // a graph computer can only be executed once
+        // 一个图计算任务只执行一次
         if (this.executed)
             throw Exceptions.computerHasAlreadyBeenSubmittedAVertexProgram();
         else
             this.executed = true;
-        // it is not possible execute a computer if it has no vertex program nor mapreducers
+
+        // 图计算任务必须要有vp或者mr才行
         if (null == this.vertexProgram && this.mapReducers.isEmpty())
             throw GraphComputer.Exceptions.computerHasNoVertexProgramNorMapReducers();
+
         // it is possible to run mapreducers without a vertex program
+        // 如果没有vp，单独执行mr也是可以的
         if (null != this.vertexProgram) {
             GraphComputerHelper.validateProgramOnComputer(this, this.vertexProgram);
             this.mapReducers.addAll(this.vertexProgram.getMapReducers());
         }
         // get the result graph and persist state to use for the computation
+        // 获取结果存储的类型，下面的方法内部使用了连续的三元运算符，可以学习
         this.resultGraph = GraphComputerHelper.getResultGraphState(Optional.ofNullable(this.vertexProgram), Optional.ofNullable(this.resultGraph));
         this.persist = GraphComputerHelper.getPersistState(Optional.ofNullable(this.vertexProgram), Optional.ofNullable(this.persist));
+
+        // 校验图写回类型和持久化类型的组合是否满足要求
         if (!this.features().supportsResultGraphPersistCombination(this.resultGraph, this.persist))
             throw GraphComputer.Exceptions.resultGraphPersistCombinationNotSupported(this.resultGraph, this.persist);
+
         // ensure requested workers are not larger than supported workers
+        // 确保worker的数量不超过当前允许最多的worker数量，worker就理解为线程就行了
         if (this.workers > this.features().getMaxWorkers())
             throw GraphComputer.Exceptions.computerRequiresMoreWorkersThanSupported(this.workers, this.features().getMaxWorkers());
 
         // initialize the memory
+        // 初始化Memory（TinkerMemory），主要是提取vp里面的MemoryComputeKey和mr里面的MapReduce
         this.memory = new TinkerMemory(this.vertexProgram, this.mapReducers);
+
+        // 此处利用ExecutorService的submit方法，提供了一个异步执行线程
+        // 里面的lambda是一个Callable，其实就是有返回类型的Runnable
         final Future<ComputerResult> result = computerService.submit(() -> {
+
+            // 记录图计算开始的时间
             final long time = System.currentTimeMillis();
+
+            // 创建GraphComputerView（GCV），一个图拥有GCV，代表着它进入了图计算模式
+            // 创建GCV，主要做了以下的事情
+            // 1. 利用graph和graphFilter参数，过滤G中的V和E
+            // 2. 提取vp里面的VCK
             final TinkerGraphComputerView view = TinkerHelper.createGraphComputerView(this.graph, this.graphFilter, null != this.vertexProgram ? this.vertexProgram.getVertexComputeKeys() : Collections.emptySet());
+
+            // workers，也就是线程池，用于执行在顶点上执行vp和mr，线程池主要做了以下几件事情
+            // 1.
             final TinkerWorkerPool workers = new TinkerWorkerPool(this.graph, this.memory, this.workers);
             try {
                 if (null != this.vertexProgram) {

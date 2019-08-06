@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.function.BinaryOperator;
 
 /**
+ * 属于工作线程的Memory
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
 public final class TinkerWorkerMemory implements Memory.Admin {

@@ -45,6 +45,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * GraphComputerView，aka GCV，拥有GCV，代表着这个图进入了图计算模式
+ * 主要用于保存vertex的VertexComputeKey， aka VCK， 以及元素属性，包括顶点和属性
+ * 此外还负责使用GraphFilter，来对Graph里面的V和E进行过滤筛选
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
 public final class TinkerGraphComputerView {
@@ -56,6 +59,9 @@ public final class TinkerGraphComputerView {
     private final Map<Object, Set<Object>> legalEdges = new HashMap<>();
     private final GraphFilter graphFilter;
 
+    // 使用GraphFilter， aka GF，过滤筛选Graph中的V和E
+    // 另外，设置VCK，比如PR算法里面的gremlin.pageRankVertexProgram.pageRank这个属性
+    // 也就是说VCK，会跟随着顶点，在图计算整个流程中都同步使用
     public TinkerGraphComputerView(final TinkerGraph graph, final GraphFilter graphFilter, final Set<VertexComputeKey> computeKeys) {
         this.graph = graph;
         this.computeKeys = new HashMap<>();
@@ -63,12 +69,17 @@ public final class TinkerGraphComputerView {
         this.computeProperties = new ConcurrentHashMap<>();
         this.graphFilter = graphFilter;
         if (this.graphFilter.hasFilter()) {
+            // 优化点：串行加载，考虑使用并行流
             graph.vertices().forEachRemaining(vertex -> {
                 boolean legalVertex = false;
+
+                // V过滤
                 if (this.graphFilter.hasVertexFilter() && this.graphFilter.legalVertex(vertex)) {
                     this.legalVertices.add(vertex.id());
                     legalVertex = true;
                 }
+
+                // E过滤
                 if ((legalVertex || !this.graphFilter.hasVertexFilter()) && this.graphFilter.hasEdgeFilter()) {
                     final Set<Object> edges = new HashSet<>();
                     this.legalEdges.put(vertex.id(), edges);
@@ -141,6 +152,7 @@ public final class TinkerGraphComputerView {
 
     //////////////////////
 
+    // 处理图计算结果完成后的写入问题，注意连续的if else是为了组合persist和graph
     public Graph processResultGraphPersist(final GraphComputer.ResultGraph resultGraph,
                                            final GraphComputer.Persist persist) {
         if (GraphComputer.Persist.NOTHING == persist) {
@@ -193,11 +205,11 @@ public final class TinkerGraphComputerView {
 
     private void addPropertiesToOriginalGraph() {
         TinkerHelper.dropGraphComputerView(this.graph);
-        this.computeProperties.forEach((element, properties) -> {
-            properties.forEach((key, vertexProperties) -> {
-                vertexProperties.forEach(vertexProperty -> {
+        this.computeProperties.forEach((element, properties) -> { // BiConsumer
+            properties.forEach((key, vertexProperties) -> { // BiConsumer
+                vertexProperties.forEach(vertexProperty -> {  // Consumer
                     final VertexProperty<?> newVertexProperty = ((Vertex) element).property(VertexProperty.Cardinality.list, vertexProperty.key(), vertexProperty.value(), T.id, vertexProperty.id());
-                    vertexProperty.properties().forEachRemaining(property -> {
+                    vertexProperty.properties().forEachRemaining(property -> { // Consumer
                         newVertexProperty.property(property.key(), property.value());
                     });
                 });
