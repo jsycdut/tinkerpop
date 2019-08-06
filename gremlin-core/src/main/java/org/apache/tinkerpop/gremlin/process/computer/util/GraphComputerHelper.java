@@ -60,6 +60,7 @@ public final class GraphComputerHelper {
         }
     }
 
+    // 连续三元运算符，很有意思
     public static GraphComputer.ResultGraph getResultGraphState(final Optional<VertexProgram> vertexProgram, final Optional<GraphComputer.ResultGraph> resultGraph) {
         return resultGraph.isPresent() ? resultGraph.get() : vertexProgram.isPresent() ? vertexProgram.get().getPreferredResultGraph() : GraphComputer.ResultGraph.ORIGINAL;
     }

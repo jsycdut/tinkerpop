@@ -25,6 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * vp池，使用阻塞队列实现，队列长度为vp池的大小
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
 public final class VertexProgramPool {
@@ -32,6 +33,7 @@ public final class VertexProgramPool {
     private final LinkedBlockingQueue<VertexProgram<?>> pool;
     private static final int TIMEOUT_MS = 10000;
 
+    // 克隆vp放入池里
     public VertexProgramPool(final VertexProgram vertexProgram, final int poolSize) {
         this.pool = new LinkedBlockingQueue<>(poolSize);
         while (this.pool.remainingCapacity() > 0) {
@@ -39,6 +41,7 @@ public final class VertexProgramPool {
         }
     }
 
+    // 使用队首vp
     public VertexProgram take() {
         try {
             return this.pool.poll(TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -47,6 +50,7 @@ public final class VertexProgramPool {
         }
     }
 
+    // 队尾添加vp
     public void offer(final VertexProgram<?> vertexProgram) {
         try {
             this.pool.offer(vertexProgram, TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -55,6 +59,7 @@ public final class VertexProgramPool {
         }
     }
 
+    // vp里面的Memory同步问题
     public synchronized void workerIterationStart(final Memory memory) {
         for (final VertexProgram<?> vertexProgram : this.pool) {
             vertexProgram.workerIterationStart(memory);

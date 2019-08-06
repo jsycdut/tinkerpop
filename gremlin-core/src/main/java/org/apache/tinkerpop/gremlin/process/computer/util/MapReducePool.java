@@ -25,6 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * mr池
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
 public final class MapReducePool {
