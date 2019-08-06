@@ -64,7 +64,7 @@ public final class TinkerGraphComputer implements GraphComputer {
 
     private ResultGraph resultGraph = null;
     private Persist persist = null;
-
+    public volatile int round = 0;
     private VertexProgram<?> vertexProgram;
     private final TinkerGraph graph;
     private TinkerMemory memory;
@@ -182,7 +182,10 @@ public final class TinkerGraphComputer implements GraphComputer {
             // 1.分图，将所有顶点分堆，送给不同的worker执行
             // 2.创建worker内存
             // 3.初始化worker
-            final TinkerWorkerPool workers = new TinkerWorkerPool(this.graph, this.memory, this.workers);
+            //final TinkerWorkerPool workers = new TinkerWorkerPool(this.graph, this.memory, this.workers);
+
+            // 这里强行只使用单线程来执行图计算，适用于调试流程
+            final TinkerWorkerPool workers = new TinkerWorkerPool(this.graph, this.memory, 1);
 
             try {
 
@@ -205,7 +208,7 @@ public final class TinkerGraphComputer implements GraphComputer {
 
                         // 核心中的核心，下面的lambda是一个三元组Consumer，在每一个顶点上执行vp
                         // 可以进入TinkerWorkerPool看执行方法，但是核心逻辑是在这个TriConsumer上
-                        // 下面的三个参数在workers.executeVertexProgram里面提供，这些数据在前面初始化workers的时候已经设置好了
+                        // 下面的三个参数在workers.executeVertexProgram内部提供，这些数据在前面初始化workers的时候已经设置好了
                         workers.executeVertexProgram((vertices, vertexProgram, workerMemory) -> { // TriConsumer
                             vertexProgram.workerIterationStart(workerMemory.asImmutable());
                             while (vertices.hasNext()) {
@@ -228,6 +231,10 @@ public final class TinkerGraphComputer implements GraphComputer {
                             // 结束一波vp执行，处理善后工作，进入下一位顶点选手的执行
                             vertexProgram.workerIterationEnd(workerMemory.asImmutable());
                             workerMemory.complete();
+                            synchronized (TinkerGraphComputer.class) {
+                                System.out.println("Current Thread=====" + Thread.currentThread().getName() + " " + ++workerMemory.round + " 轮执行完毕");
+                            }
+
                         });
 
                         // 所有顶点执行这一轮完毕，进入下一轮整体执行

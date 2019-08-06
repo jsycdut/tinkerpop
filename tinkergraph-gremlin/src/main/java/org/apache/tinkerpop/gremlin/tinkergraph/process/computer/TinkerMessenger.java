@@ -43,6 +43,7 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 /**
+ * 状态共享的消息信使
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
 public final class TinkerMessenger<M> implements Messenger<M> {

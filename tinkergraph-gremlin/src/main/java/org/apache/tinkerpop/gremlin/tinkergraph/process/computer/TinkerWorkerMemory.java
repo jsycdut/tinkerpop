@@ -33,6 +33,7 @@ import java.util.function.BinaryOperator;
  */
 public final class TinkerWorkerMemory implements Memory.Admin {
 
+    public volatile int round = 0;
     private final TinkerMemory mainMemory;
     private final Map<String, Object> workerMemory = new HashMap<>();
     private final Map<String, BinaryOperator<Object>> reducers = new HashMap<>();

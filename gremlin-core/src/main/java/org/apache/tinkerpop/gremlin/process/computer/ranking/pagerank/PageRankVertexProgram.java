@@ -50,8 +50,7 @@ import java.util.Set;
 /**
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
-public class PageRankVertexProgram implements VertexProgram<Double> {
-
+public class PageRankVertexProgram implements VertexProgram<Double> { // <Double>的意思是传递的消息的类型是double
 
     public static final String PAGE_RANK = "gremlin.pageRankVertexProgram.pageRank";
     private static final String EDGE_COUNT = "gremlin.pageRankVertexProgram.edgeCount";

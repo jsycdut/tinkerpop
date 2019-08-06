@@ -45,6 +45,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
+ *
+ * 这个类是对OLTP数据模型的一个封装
+ *
+ *
  * @author Marko A. Rodriguez (http://markorodriguez.com)
  */
 public final class ComputerGraph implements Graph {
@@ -52,6 +56,8 @@ public final class ComputerGraph implements Graph {
     private enum State {VERTEX_PROGRAM, MAP_REDUCE}
 
     private ComputerVertex starVertex;
+
+    // 问题在于，这个computeKeys，是VCK，还是MCK
     private final Set<String> computeKeys;
     private State state;
 
@@ -118,6 +124,8 @@ public final class ComputerGraph implements Graph {
         throw new UnsupportedOperationException();
     }
 
+    // ComputerElement是ComputerVertex和ComputerEdge以及ComputerVertexProperty的父类
+    // 这里提供了许多有用的方法，包括获取id label graph等信息的方法
     public class ComputerElement implements Element, WrappedElement<Element> {
         private final Element element;
 
@@ -174,7 +182,8 @@ public final class ComputerGraph implements Graph {
 
         @Override
         public <V> Iterator<V> values(final String... propertyKeys) {
-            return IteratorUtils.map(this.<V>properties(propertyKeys), property -> property.value());
+            //return IteratorUtils.map(this.<V>properties(propertyKeys), property -> property.value());
+            return IteratorUtils.map(this.<V>properties(propertyKeys), Property::value);
         }
 
         @Override
@@ -192,13 +201,14 @@ public final class ComputerGraph implements Graph {
             return this.element.equals(other);
         }
 
+        // 获取宿主
         @Override
         public Element getBaseElement() {
             return this.element;
         }
     }
 
-    ///////////////////////////////////
+    /////////////////////////////////// ComputerVertex 内部类
 
     public class ComputerVertex extends ComputerElement implements Vertex, WrappedVertex<Vertex> {
 
@@ -212,6 +222,7 @@ public final class ComputerGraph implements Graph {
             return new ComputerVertexProperty<>(this.getBaseVertex().property(key));
         }
 
+        // 下面抛出的都是unchecked Exception，一旦出错，这个流程就gg
         @Override
         public <V> VertexProperty<V> property(final String key, final V value) {
             if (state.equals(State.MAP_REDUCE))
@@ -236,6 +247,9 @@ public final class ComputerGraph implements Graph {
                 throw GraphComputer.Exceptions.vertexPropertiesCanNotBeUpdatedInMapReduce();
             if (!computeKeys.contains(key))
                 throw GraphComputer.Exceptions.providedKeyIsNotAnElementComputeKey(key);
+
+            // 下面的方法就会读写宿主的属性，所以在宿主的写属性方法里面区分了当前顶点是不是在OLAP的图计算模式
+            // 参考TinkerVertex的property方法（没法在普通注释里面写超链接，(╯﹏╰)）
             return new ComputerVertexProperty<>(this.getBaseVertex().property(cardinality, key, value, keyValues));
         }
 
@@ -243,6 +257,8 @@ public final class ComputerGraph implements Graph {
         public Edge addEdge(final String label, final Vertex inVertex, final Object... keyValues) {
             if (state.equals(State.MAP_REDUCE))
                 throw GraphComputer.Exceptions.incidentAndAdjacentElementsCanNotBeAccessedInMapReduce();
+
+            // 同样调用了宿主的方法
             return new ComputerEdge(this.getBaseVertex().addEdge(label, inVertex, keyValues));
         }
 
@@ -271,7 +287,7 @@ public final class ComputerGraph implements Graph {
         }
     }
 
-    ////////////////////////////
+    //////////////////////////// ComputerEdge
 
     public class ComputerEdge extends ComputerElement implements Edge, WrappedEdge<Edge> {
 
@@ -311,7 +327,7 @@ public final class ComputerGraph implements Graph {
         }
     }
 
-    ///////////////////////////
+    /////////////////////////// ComputerVertexProperty
 
     public class ComputerVertexProperty<V> extends ComputerElement implements VertexProperty<V>, WrappedVertexProperty<VertexProperty<V>> {
         public ComputerVertexProperty(final VertexProperty<V> vertexProperty) {
@@ -349,7 +365,7 @@ public final class ComputerGraph implements Graph {
         }
     }
 
-    ///////////////////////////
+    /////////////////////////// ComputerProperty
 
     public class ComputerProperty<V> implements Property<V>, WrappedProperty<Property<V>> {
 
@@ -411,7 +427,7 @@ public final class ComputerGraph implements Graph {
         }
     }
 
-    ///////////////////////////
+    /////////////////////////// ComputerAdjacentVertex
 
     public class ComputerAdjacentVertex implements Vertex, WrappedVertex<Vertex> {
 
