@@ -128,6 +128,7 @@ public final class TinkerGraphComputer implements GraphComputer {
         return this;
     }
 
+    // 核心，主要用于执行vp和mr
     @Override
     public Future<ComputerResult> submit() {
         // 一个图计算任务只执行一次
@@ -166,7 +167,7 @@ public final class TinkerGraphComputer implements GraphComputer {
 
         // 此处利用ExecutorService的submit方法，提供了一个异步执行线程
         // 里面的lambda是一个Callable，其实就是有返回类型的Runnable
-        final Future<ComputerResult> result = computerService.submit(() -> {
+        final Future<ComputerResult> result = computerService.submit(() -> { // Callable
 
             // 记录图计算开始的时间
             final long time = System.currentTimeMillis();
@@ -178,31 +179,62 @@ public final class TinkerGraphComputer implements GraphComputer {
             final TinkerGraphComputerView view = TinkerHelper.createGraphComputerView(this.graph, this.graphFilter, null != this.vertexProgram ? this.vertexProgram.getVertexComputeKeys() : Collections.emptySet());
 
             // workers，也就是线程池，用于执行在顶点上执行vp和mr，线程池主要做了以下几件事情
-            // 1.
+            // 1.分图，将所有顶点分堆，送给不同的worker执行
+            // 2.创建worker内存
+            // 3.初始化worker
             final TinkerWorkerPool workers = new TinkerWorkerPool(this.graph, this.memory, this.workers);
+
             try {
+
+                // 执行vp
                 if (null != this.vertexProgram) {
                     // execute the vertex program
+
+                    // 在vp中初始化，接下来就需要看具体vp实现的内容了
                     this.vertexProgram.setup(this.memory);
+
+                    // 死循环，要跳出，除非vp自己说算法执行完了，从内部break
                     while (true) {
+
                         if (Thread.interrupted()) throw new TraversalInterruptedException();
+
                         this.memory.completeSubRound();
+
+                        // 告知workers，你要执行的是什么vp，把你的vp pool初始化好，准备干活
                         workers.setVertexProgram(this.vertexProgram);
-                        workers.executeVertexProgram((vertices, vertexProgram, workerMemory) -> {
+
+                        // 核心中的核心，下面的lambda是一个三元组Consumer，在每一个顶点上执行vp
+                        // 可以进入TinkerWorkerPool看执行方法，但是核心逻辑是在这个TriConsumer上
+                        // 下面的三个参数在workers.executeVertexProgram里面提供，这些数据在前面初始化workers的时候已经设置好了
+                        workers.executeVertexProgram((vertices, vertexProgram, workerMemory) -> { // TriConsumer
                             vertexProgram.workerIterationStart(workerMemory.asImmutable());
                             while (vertices.hasNext()) {
                                 final Vertex vertex = vertices.next();
                                 if (Thread.interrupted()) throw new TraversalInterruptedException();
+
+                                // 最核心的地方
                                 vertexProgram.execute(
+
+                                        // 为该vertex生成一个ComputerVertex
                                         ComputerGraph.vertexProgram(vertex, vertexProgram),
+
+                                        // 设置对应的消息发送器
                                         new TinkerMessenger<>(vertex, this.messageBoard, vertexProgram.getMessageCombiner()),
+
+                                        // 对应的worker内存
                                         workerMemory);
                             }
+
+                            // 结束一波vp执行，处理善后工作，进入下一位顶点选手的执行
                             vertexProgram.workerIterationEnd(workerMemory.asImmutable());
                             workerMemory.complete();
                         });
+
+                        // 所有顶点执行这一轮完毕，进入下一轮整体执行
                         this.messageBoard.completeIteration();
                         this.memory.completeSubRound();
+
+                        // 看看是否可以跳出苦海，结束苦逼的vp执行
                         if (this.vertexProgram.terminate(this.memory)) {
                             this.memory.incrIteration();
                             break;
@@ -210,10 +242,13 @@ public final class TinkerGraphComputer implements GraphComputer {
                             this.memory.incrIteration();
                         }
                     }
+
+                    // 抛弃所有的transient vck
                     view.complete(); // drop all transient vertex compute keys
                 }
 
                 // execute mapreduce jobs
+                // 执行mr
                 for (final MapReduce mapReduce : mapReducers) {
                     final TinkerMapEmitter<?, ?> mapEmitter = new TinkerMapEmitter<>(mapReduce.doStage(MapReduce.Stage.REDUCE));
                     final SynchronizedIterator<Vertex> vertices = new SynchronizedIterator<>(this.graph.vertices());
@@ -268,6 +303,8 @@ public final class TinkerGraphComputer implements GraphComputer {
                 workers.close();
             }
         });
+
+        // 结束执行，返回结果
         this.computerService.shutdown();
         return result;
     }
