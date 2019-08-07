@@ -19,8 +19,10 @@ public class OLAPTest {
 
         try {
             ComputerResult result = graph.compute().program(PageRankVertexProgram.build().create()).submit().get();
+            System.out.println("iterations: " + result.memory().getIteration());
             result.graph().traversal().V().toStream().forEach( v -> {
-                System.out.println(v.id() + "  " + v.property(PageRankVertexProgram.PAGE_RANK).key() + "  " + v.property(PageRankVertexProgram.PAGE_RANK).value());
+                System.out.println(v.id() + "  " + v.property(PageRankVertexProgram.PAGE_RANK).key() + "  " + v.property(PageRankVertexProgram.PAGE_RANK).value()
+                + " Edge count " + v.property("gremlin.pageRankVertexProgram.edgeCount").value());
             });
         } catch (InterruptedException e) {
             e.printStackTrace();

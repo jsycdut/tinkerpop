@@ -53,7 +53,7 @@ import java.util.Set;
 public class PageRankVertexProgram implements VertexProgram<Double> { // <Double>的意思是传递的消息的类型是double
 
     public static final String PAGE_RANK = "gremlin.pageRankVertexProgram.pageRank";
-    private static final String EDGE_COUNT = "gremlin.pageRankVertexProgram.edgeCount";
+    private static final String EDGE_COUNT = "gremlin.pageRankVertexProgram.edgeCount"; // 这个属性是顶点拥有的边的数量，这incidentMessageScope的边的方向有关
     private static final String PROPERTY = "gremlin.pageRankVertexProgram.property";
     private static final String VERTEX_COUNT = "gremlin.pageRankVertexProgram.vertexCount";
     private static final String ALPHA = "gremlin.pageRankVertexProgram.alpha";
@@ -65,6 +65,7 @@ public class PageRankVertexProgram implements VertexProgram<Double> { // <Double
     private static final String CONVERGENCE_ERROR = "gremlin.pageRankVertexProgram.convergenceError";
 
     private MessageScope.Local<Double> incidentMessageScope = MessageScope.Local.of(__::outE);
+    //private MessageScope.Local<Double> incidentMessageScope = MessageScope.Local.of(__::bothE);
     private MessageScope.Local<Double> countMessageScope = MessageScope.Local.of(new MessageScope.Local.ReverseTraversalSupplier(this.incidentMessageScope));
     private PureTraversal<Vertex, Edge> edgeTraversal = null;
     private PureTraversal<Vertex, ? extends Number> initialRankTraversal = null;
@@ -79,6 +80,7 @@ public class PageRankVertexProgram implements VertexProgram<Double> { // <Double
 
     }
 
+    // 这里的Configuration来自build方法收集到的信息
     @Override
     public void loadState(final Graph graph, final Configuration configuration) {
         if (configuration.containsKey(INITIAL_RANK_TRAVERSAL))
@@ -94,7 +96,7 @@ public class PageRankVertexProgram implements VertexProgram<Double> { // <Double
         this.property = configuration.getString(PROPERTY, PAGE_RANK);
         this.vertexComputeKeys = new HashSet<>(Arrays.asList(
                 VertexComputeKey.of(this.property, false),
-                VertexComputeKey.of(EDGE_COUNT, true)));
+                VertexComputeKey.of(EDGE_COUNT, false))); // false => true EDGE_COUNT is transient
         this.memoryComputeKeys = new HashSet<>(Arrays.asList(
                 MemoryComputeKey.of(TELEPORTATION_ENERGY, Operator.sum, true, true),
                 MemoryComputeKey.of(VERTEX_COUNT, Operator.sum, true, true),
@@ -167,21 +169,21 @@ public class PageRankVertexProgram implements VertexProgram<Double> { // <Double
 
     @Override
     public void execute(final Vertex vertex, Messenger<Double> messenger, final Memory memory) {
-        if (memory.isInitialIteration()) {
+        if (memory.isInitialIteration()) { // 图计算第0轮，此时Memory处于初始化状态，然后下面在算工作线程里面的顶点数量
             messenger.sendMessage(this.countMessageScope, 1.0d);
             memory.add(VERTEX_COUNT, 1.0d);
         } else {
-            final double vertexCount = memory.<Double>get(VERTEX_COUNT);
+            final double vertexCount = memory.<Double>get(VERTEX_COUNT); // 从workerMemory里面拿顶点数量，这些数量是第0轮memory写进去的，174行
             final double edgeCount;
             double pageRank;
-            if (1 == memory.getIteration()) {
-                edgeCount = IteratorUtils.reduce(messenger.receiveMessages(), 0.0d, (a, b) -> a + b);
-                vertex.property(VertexProperty.Cardinality.single, EDGE_COUNT, edgeCount);
+            if (1 == memory.getIteration()) { // 第一轮，统计每个顶点的边的数量和确定pageRank的值，这里是第0轮发送的消息得到的，173行
+                edgeCount = IteratorUtils.reduce(messenger.receiveMessages(), 0.0d, (a, b) -> a + b); // 这里的edgeCount是当前v的outE
+                vertex.property(VertexProperty.Cardinality.single, EDGE_COUNT, edgeCount);// 写edgeCount数量属性
                 pageRank = null == this.initialRankTraversal ?
                         0.0d :
                         TraversalUtil.apply(vertex, this.initialRankTraversal.get()).doubleValue();
-            } else {
-                edgeCount = vertex.value(EDGE_COUNT);
+            } else { // 第一轮之后的其他轮次，直接从vertex里面拿边的数量和从消息里面算pagerank值
+                edgeCount = vertex.value(EDGE_COUNT); // 第一轮已经写好了数据，这里直接拿
                 pageRank = IteratorUtils.reduce(messenger.receiveMessages(), 0.0d, (a, b) -> a + b);
             }
             //////////////////////////
