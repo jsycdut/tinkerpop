@@ -178,7 +178,7 @@ public final class TinkerGraphComputer implements GraphComputer {
             // 2. 提取vp里面的VCK
             final TinkerGraphComputerView view = TinkerHelper.createGraphComputerView(this.graph, this.graphFilter, null != this.vertexProgram ? this.vertexProgram.getVertexComputeKeys() : Collections.emptySet());
 
-            // workers，也就是线程池，用于执行在顶点上执行vp和mr，线程池主要做了以下几件事情
+            // workers，也就是线程池，用于在顶点上执行vp和mr，线程池主要做了以下几件事情
             // 1.分图，将所有顶点分堆，送给不同的worker执行
             // 2.创建worker内存
             // 3.初始化worker

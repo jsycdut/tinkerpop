@@ -4,12 +4,15 @@ import org.apache.tinkerpop.gremlin.process.computer.ComputerResult;
 import org.apache.tinkerpop.gremlin.process.computer.ranking.pagerank.PageRankVertexProgram;
 import org.apache.tinkerpop.gremlin.process.computer.traversal.step.map.PageRank;
 import org.apache.tinkerpop.gremlin.process.traversal.TraversalSource;
+import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.apache.tinkerpop.gremlin.tinkergraph.process.computer.TinkerGraphComputer;
 import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerFactory;
 import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 public class OLAPTest {
     @Test
@@ -17,7 +20,14 @@ public class OLAPTest {
         TinkerGraph graph = TinkerFactory.createModern();
         TraversalSource ts = graph.traversal();
 
-        try {
+        Vertex v1 = null;
+
+        List<Vertex> list = graph.traversal().V(1).bothE().otherV().toStream().collect(Collectors.toList());
+
+        for (Vertex v : list) System.out.println(v.id());
+
+        System.out.println(v1);
+/*        try {
             ComputerResult result = graph.compute().program(PageRankVertexProgram.build().create()).submit().get();
             System.out.println("iterations: " + result.memory().getIteration());
             result.graph().traversal().V().toStream().forEach( v -> {
@@ -28,6 +38,6 @@ public class OLAPTest {
             e.printStackTrace();
         } catch (ExecutionException e) {
             e.printStackTrace();
-        }
+        }*/
     }
 }
