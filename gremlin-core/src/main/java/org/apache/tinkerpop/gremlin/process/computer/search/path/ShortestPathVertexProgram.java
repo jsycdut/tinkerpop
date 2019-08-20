@@ -65,6 +65,11 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
+ * 最短路VertexProgram，基于消息传递，每个顶点都把到自己的路径传递给邻边顶点
+ * 直到每个顶点知道自己到其他所有顶点的所有最短路径才停止计算，消息量巨大
+ * 可以计算出所有的最短路径
+ *
+ * 需要注意里面对Traversal的应用，这个我还不熟悉
  * @author Daniel Kuppitz (http://gremlin.guru)
  */
 public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Edge, Number>> {
@@ -240,6 +245,7 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
     @Override
     public void execute(final Vertex vertex, final Messenger<Triplet<Path, Edge, Number>> messenger, final Memory memory) {
 
+        // 阶段判定，是否收集最短路径或者更新已停机的Traverser
         switch (memory.<Integer>get(STATE)) {
 
             case COLLECT_PATHS:
@@ -255,6 +261,11 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
 
         if (memory.isInitialIteration()) {
 
+            // 首轮迭代，每个顶点构建只包含自己的路径，然后发送给邻边（不论方向）
+            // 此外，还会“淘汰”一部分所谓的非起点顶点，因为起点可能有多个
+            // “淘汰”是指在首轮的时候，那些非起点顶点不构建只包含自身的路径，
+            // 只在后面的轮次等来自邻边的路径消息，来了一个消息就把自己收到的路径消息发送给自己的邻边，
+            // 自己的邻边顶点则在下一轮接收到自己的这个消息
             // Use the first iteration to copy halted traversers from the halted traverser index to the respective
             // vertices. This way the rest of the code can be simplified and always expect the HALTED_TRAVERSERS
             // property to be available (if halted traversers exist for this vertex).
@@ -280,9 +291,13 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
 
         } else {
 
+            // 次轮以及之后的每一轮，每个顶点都接收来自邻边的消息，然后延长自己的路径，然后把消息发送给邻边
             // load existing paths to this vertex and extend them based on messages received from adjacent vertices
+            // 加载顶点自身的路径属性，这个属性是每一轮接收消息完毕之后都会在自己身上加上去的
             final Map<Vertex, Pair<Number, Set<Path>>> paths =
                     vertex.<Map<Vertex, Pair<Number, Set<Path>>>>property(PATHS).orElseGet(HashMap::new);
+
+            // 接收消息
             final Iterator<Triplet<Path, Edge, Number>> iterator = messenger.receiveMessages();
 
             while (iterator.hasNext()) {
@@ -294,9 +309,12 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
 
                 Path newPath = null;
 
+                // 把消息里面的路径和自己的路径比比长短
                 // already know a path coming from this source vertex?
+                // 自身路径已经包含了消息路径里面的起点
                 if (paths.containsKey(sourceVertex)) {
 
+                    // 路径的长短指的是图里面的cost值，没有权重的就是1，和路径里面边的条数相等
                     final Number currentShortestDistance = paths.get(sourceVertex).getValue0();
                     final int cmp = NumberHelper.compare(distance, currentShortestDistance);
 
@@ -314,7 +332,7 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
                             paths.get(sourceVertex).getValue1().add(newPath);
                         }
                     }
-                } else if (!exceedsMaxDistance(distance)) {
+                } else if (!exceedsMaxDistance(distance)) { // 自身的路径里面没有消息路径的起点，说明是一条新路径，保存起来
                     // store the new path as the shortest path from the source vertex to the current vertex
                     final Set<Path> pathSet = new HashSet<>();
                     pathSet.add(newPath = extendPath(sourcePath, triplet.getValue1(), vertex));
@@ -323,6 +341,7 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
 
                 // if a new path was found, send messages to adjacent vertices, otherwise do nothing as there's no
                 // chance to find any new paths going forward
+                // 把新发现的这条路径（不一定是最短路径，只是一条到自己的路径）挂到身上
                 if (newPath != null) {
                     vertex.property(VertexProperty.Cardinality.single, PATHS, paths);
                     processEdges(vertex, newPath, distance, messenger);
@@ -332,6 +351,7 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
         }
 
         // VOTE_TO_HALT will be set to true if an iteration hasn't found any new paths
+        // 要是自己找不到新的路径了，也就是传递给自己的消息，也就是那些路径自己都接收过了，就请求停机（但是其他机子未必同意）
         memory.add(VOTE_TO_HALT, voteToHalt);
     }
 
@@ -437,6 +457,8 @@ public class ShortestPathVertexProgram implements VertexProgram<Triplet<Path, Ed
         return filterTraversal.hasNext();
     }
 
+    // 把自己身上的当前路径传递给邻边，这个方法在一个vp的execute里面接收到多少条消息，就可能调用几次
+    // 或者说，但凡当前顶点发现了一条到自己的新路径，就会把这个消息发送给邻边
     private void processEdges(final Vertex vertex, final Path currentPath, final Number currentDistance,
                               final Messenger<Triplet<Path, Edge, Number>> messenger) {
 
